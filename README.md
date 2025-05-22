@@ -9,21 +9,37 @@ Measure the SMPL/SMPLX body models and visualize the measurements and landmarks.
 <br>
 
 ## 🔨 Getting started
-You can use a docker container to facilitate running the code. Run in terminal:
 
+### Prerequisites
+- Python 3.9 or higher
+- [uv](https://github.com/astral-sh/uv) (recommended) or pip
+
+### Installation
+
+1. Clone the repository:
 ```bash
-cd docker
-sh build.sh
-sh docker_run.sh CODE_PATH
+git clone https://github.com/yourusername/SMPL-Anthropometry.git
+cd SMPL-Anthropometry
 ```
 
-by adjusting the `CODE_PATH` to the `SMPL-Anthropometry` directory location. This creates a `smpl-anthropometry-container` container.
+2. Create and activate a virtual environment (using uv):
+```bash
+uv venv
+source .venv/bin/activate  # On Unix/macOS
+# or
+.venv\Scripts\activate  # On Windows
+```
 
-If you do not want to use a docker container, you can also just install the necessary packages from `docker/requirements.txt` into your own enviroment.
+3. Install dependencies:
+```bash
+uv pip install -r requirements.txt
+```
 
-Next, provide the body models (SMPL or SMPLX) and:
-1. put the `SMPL_{GENDER}.pkl` (MALE, FEMALE and NEUTRAL) models into the `data/smpl` folder
-2. put the `SMPLX_{GENDER}.pkl` (MALE, FEMALE and NEUTRAL) models into the `data/smplx` folder
+### Model Setup
+
+You'll need to provide the body models (SMPL or SMPLX):
+1. Put the `SMPL_{GENDER}.pkl` (MALE, FEMALE and NEUTRAL) models into the `data/smpl` folder
+2. Put the `SMPLX_{GENDER}.pkl` (MALE, FEMALE and NEUTRAL) models into the `data/smplx` folder
 
 All the models can be found [here](https://github.com/vchoutas/smplx#downloading-the-model).
 
@@ -64,7 +80,6 @@ measurer.from_verts(verts=verts)
 
 Finally, you can measure the body with:
 ```python
-
 measurement_names = measurer.all_possible_measurements # or chose subset of measurements 
 measurer.measure(measurement_names) 
 measurer.label_measurements(STANDARD_LABELS) 
@@ -120,6 +135,11 @@ The output consists of a dictionary of measurements expressed in cm, the labeled
 Similarly, you can measure a zero-shaped T-posed neutral gender SMPLX body model with:
 ```bash
 python measure.py --measure_neutral_smplx_with_mean_shape
+```
+
+You can also specify the gender:
+```bash
+python measure.py --measure_neutral_smpl_with_mean_shape --gender FEMALE
 ```
 
 <br>

@@ -1,4 +1,3 @@
-
 from typing import List, Dict
 import numpy as np
 import trimesh
@@ -475,6 +474,8 @@ if __name__ == "__main__":
                         help="Measure a mean shape smpl model.")
     parser.add_argument('--measure_neutral_smplx_with_mean_shape', action='store_true',
                         help="Measure a mean shape smplx model.")
+    parser.add_argument('--gender', type=str, default='NEUTRAL', choices=['MALE', 'FEMALE', 'NEUTRAL'],
+                        help="Gender for the SMPL/SMPLX model (MALE, FEMALE, NEUTRAL). Default: NEUTRAL.")
     args = parser.parse_args()
 
     model_types_to_measure = []
@@ -484,11 +485,11 @@ if __name__ == "__main__":
         model_types_to_measure.append("smplx")
 
     for model_type in model_types_to_measure:
-        print(f"Measuring {model_type} body model")
+        print(f"Measuring {model_type} body model (gender: {args.gender})")
         measurer = MeasureBody(model_type)
 
         betas = torch.zeros((1, 10), dtype=torch.float32)
-        measurer.from_body_model(gender="NEUTRAL", shape=betas)
+        measurer.from_body_model(gender=args.gender, shape=betas)
 
         measurement_names = measurer.all_possible_measurements
         measurer.measure(measurement_names)

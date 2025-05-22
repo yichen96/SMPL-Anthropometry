@@ -1,4 +1,3 @@
-
 import numpy as np
 from typing import List
 import plotly
@@ -165,8 +164,9 @@ class Visualizer():
 
         plots = []
 
-        landmark_colors = dict(zip(self.landmarks.keys(),
-                                px.colors.qualitative.Alphabet))
+        color_list = px.colors.qualitative.Alphabet
+        landmark_keys = list(self.landmarks.keys())
+        landmark_colors = {name: color_list[i % len(color_list)] for i, name in enumerate(landmark_keys)}
 
         for lm_name in landmark_names:
             if lm_name not in self.landmarks.keys():
@@ -184,7 +184,7 @@ class Visualizer():
                                 z = [lm[2]], 
                                 mode='markers',
                                 marker=dict(size=8,
-                                            color=landmark_colors[lm_name],
+                                            color=landmark_colors.get(lm_name, "black"),
                                             opacity=1,
                                             ),
                                name=lm_name
