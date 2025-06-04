@@ -27,30 +27,42 @@ def set_shape(model, shape_coefs):
     shape_coefs = shape_coefs.to(torch.float32)
     return model(betas=shape_coefs, return_verts=True)
 
-def create_model(model_type, model_root, gender, num_betas=10, num_thetas=24):
+def create_model(model_type, model_root, gender, num_betas=10, num_thetas=24, pose_type="tpose"):
     '''
     Create SMPL/SMPLX/etc. body model
     :param model_type: str of model type: smpl, smplx, etc.
     :param model_root: str of location where there are smpl/smplx/etc. folders with .pkl models
-                        (clumsy definition in smplx package)
     :param gender: str of gender: MALE or FEMALE or NEUTRAL
     :param num_betas: int of number of shape coefficients
-                      requires the model with num_coefs in model_root
     :param num_thetas: int of number of pose coefficients
-    
-    Return:
-    :param smplx body model (SMPL, SMPLX, etc.)
+    :param pose_type: str of pose type: "tpose" or "apose"
     '''
     
-    #body_pose = torch.zeros((1, (num_thetas-1) * 3))
-    
-    return smplx.create(model_path=model_root,
+    model = smplx.create(model_path=model_root,
                         model_type=model_type,
                         gender=gender, 
                         use_face_contour=False,
                         num_betas=num_betas,
-                        #body_pose=body_pose,
                         ext='pkl')
+    
+    if pose_type == "apose":
+        thetas = torch.zeros((1, 72))
+        angle_rad = np.pi / 4  # 45 degrees
+
+        # Left shoulder (joint 16)
+        thetas[0, 16*3 + 2] = -angle_rad  # Z axis
+
+        # Right shoulder (joint 17)
+        thetas[0, 17*3 + 2] = angle_rad   # Z axis
+
+        model_output = model(
+            betas=torch.zeros((1, num_betas)),
+            body_pose=thetas[:, 3:],  # skip root joint
+            return_verts=True
+        )
+        return model_output
+    else:
+        return model
 
 
 
@@ -336,18 +348,22 @@ class MeasureSMPL(Measurer):
         self.num_joints = SMPL_NUM_JOINTS
 
         self.num_points = 6890
+        self.pose_type = "tpose"  # Default pose type
 
     def from_verts(self,
-                   verts: torch.tensor):
+                   verts: torch.tensor,
+                   pose_type: str = "tpose"):
         '''
         Construct body model from only vertices.
         :param verts: torch.tensor (6890,3) of SMPL vertices
+        :param pose_type: str, "tpose" or "apose"
         '''        
 
         verts = verts.squeeze()
         error_msg = f"verts need to be of dimension ({self.num_points},3)"
         assert verts.shape == torch.Size([self.num_points,3]), error_msg
 
+        self.pose_type = pose_type
         joint_regressor = get_joint_regressor(self.model_type, 
                                               self.body_model_root,
                                               gender="NEUTRAL", 
@@ -358,24 +374,35 @@ class MeasureSMPL(Measurer):
 
     def from_body_model(self,
                         gender: str,
-                        shape: torch.tensor):
+                        shape: torch.tensor,
+                        pose_type: str = "tpose"):
         '''
         Construct body model from given gender and shape params 
         of SMPl model.
         :param gender: str, MALE or FEMALE or NEUTRAL
         :param shape: torch.tensor, (1,10) beta parameters
                                     for SMPL model
+        :param pose_type: str, "tpose" or "apose"
         '''  
 
+        self.pose_type = pose_type
         model = create_model(model_type=self.model_type, 
                              model_root=self.body_model_root, 
                              gender=gender,
                              num_betas=10,
-                             num_thetas=self.num_joints)    
-        model_output = set_shape(model, shape)
+                             num_thetas=self.num_joints,
+                             pose_type=pose_type)    
         
-        self.verts = model_output.vertices.detach().cpu().numpy().squeeze()
-        self.joints = model_output.joints.squeeze().detach().cpu().numpy()
+        if pose_type == "apose":
+            # For A-pose, model_output already contains the posed vertices and joints
+            self.verts = model.vertices.detach().cpu().numpy().squeeze()
+            self.joints = model.joints.squeeze().detach().cpu().numpy()
+        else:
+            # For T-pose, we need to set the shape
+            model_output = set_shape(model, shape)
+            self.verts = model_output.vertices.detach().cpu().numpy().squeeze()
+            self.joints = model_output.joints.squeeze().detach().cpu().numpy()
+            
         self.gender = gender
 
 
@@ -434,20 +461,23 @@ class MeasureSMPLX(Measurer):
 
     def from_body_model(self,
                         gender: str,
-                        shape: torch.tensor):
+                        shape: torch.tensor,
+                        pose_type: str):
         '''
         Construct body model from given gender and shape params 
         of SMPl model.
         :param gender: str, MALE or FEMALE or NEUTRAL
         :param shape: torch.tensor, (1,10) beta parameters
                                     for SMPL model
+        :param pose_type: str, "tpose" or "apose"
         '''  
 
         model = create_model(model_type=self.model_type, 
                              model_root=self.body_model_root, 
                              gender=gender,
                              num_betas=10,
-                             num_thetas=self.num_joints)    
+                             num_thetas=self.num_joints,
+                             pose_type=pose_type)    
         model_output = set_shape(model, shape)
         
         self.verts = model_output.vertices.detach().cpu().numpy().squeeze()
@@ -476,6 +506,8 @@ if __name__ == "__main__":
                         help="Measure a mean shape smplx model.")
     parser.add_argument('--gender', type=str, default='NEUTRAL', choices=['MALE', 'FEMALE', 'NEUTRAL'],
                         help="Gender for the SMPL/SMPLX model (MALE, FEMALE, NEUTRAL). Default: NEUTRAL.")
+    parser.add_argument('--pose_type', type=str, default='tpose', choices=['tpose', 'apose'],
+                        help="Pose type for the model (tpose or apose). Default: tpose.")
     args = parser.parse_args()
 
     model_types_to_measure = []
@@ -485,11 +517,11 @@ if __name__ == "__main__":
         model_types_to_measure.append("smplx")
 
     for model_type in model_types_to_measure:
-        print(f"Measuring {model_type} body model (gender: {args.gender})")
+        print(f"Measuring {model_type} body model (gender: {args.gender}, pose: {args.pose_type})")
         measurer = MeasureBody(model_type)
 
         betas = torch.zeros((1, 10), dtype=torch.float32)
-        measurer.from_body_model(gender=args.gender, shape=betas)
+        measurer.from_body_model(gender=args.gender, shape=betas, pose_type=args.pose_type)
 
         measurement_names = measurer.all_possible_measurements
         measurer.measure(measurement_names)
